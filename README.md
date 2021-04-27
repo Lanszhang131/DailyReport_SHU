@@ -1,20 +1,26 @@
 # DailyReport_SHU
 
-上海大学健康之路每日一报/两报自动打卡，受@BlueFisher大神所启发的[项目](https://github.com/BlueFisher/SHU-selfreport)。如下是与@BlueFisher大神项目不同之处，希望能对大家有所帮助
+上海大学健康之路每日一报/两报自动打卡，受@BlueFisher大神所启发的[项目](https://github.com/BlueFisher/SHU-selfreport)。希望能对大家有所帮助
 
-* 能自行识别一报和两报
+
+
+## 主要功能
+
 * 一报根据前一天上报的地址进行填报，无需自己手动配置地址 
+* **党员自动取答案并答题**（多选题暂时不支持，但是能成功上报）
+* 自动读新闻，不用在登录的时候被强制读新闻了
 * 一报根据所在地调整上报内容（上海和外地的上报选项会有所差别），所以只需要知道学生学号密码即可上报
 * 对多人上报进行优化，短时间内多次登录服务器会报429错误，因此代码中有加入休眠机制
-* 没有一键自动补报
 * 需要github action的教程请移步@BlueFisher的[项目](https://github.com/BlueFisher/SHU-selfreport)
 
 
 
-## 4.22更新（重要）
+## 4.27更新（重要）
 
-* 加入党员答题模块
-* 多人上报异常处理
+* 增加多人上报的稳定性
+* 增加了一些运行的arguments
+
+
 
 ## 依赖
 
@@ -65,24 +71,28 @@
     如下是所有的可选参数（` python dailyreport.py -h`即可调出）
 
     ```bash
-    % python dailyreport.py -h           
-    usage: dailyreport.py [-h] [--check CHECK] [--send SEND]
+    % python dailyreport.py -h       
+    usage: dailyreport.py [-h] [--check CHECK] [--send SEND] [--dir DIR]
+                          [--json JSON] [--noDir NODIR]
     
     optional arguments:
       -h, --help     show this help message and exit
-      --check CHECK  Check the login of students, default is 0, Input 1 if you
-                     want to check.
-      --send SEND    Send Email or not, default is 0. Input 1 if you want to send
-                     Email.
+      --check CHECK  Check the login of students
+      --send SEND    Send Email or not
+      --dir DIR      txt dir
+      --json JSON    json file
+      --noDir NODIR  Only provide json file
     ```
 
-    
+    其中dir指定的是存放密码txt文件的文件夹，默认为students，--json指定的是存放学生信息json文件的路径（假如不存在会自动新建），--noDir指直接读取json文件进行上报（适用于上报失败后重报）
 
 6. 上报过程中终端会打印以下信息，`done ` 就说明上报成功，`failed`说明出现了上报内容错误，`retry`说明遇到了429问题，正在重新登录（等待120秒），其他的话说明...出了大问题
 
     ``` bash
     获取cookie
     stu_1.txt login succeed!
+    非党员或已答题
+    新闻都读过了
     张三 done
     ```
 

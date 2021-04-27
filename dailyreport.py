@@ -24,7 +24,7 @@ EMAIL_HOST = ''  # Email 服务
 PUBLIC_KEY = "-----BEGIN PUBLIC KEY-----\n        MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDl/aCgRl9f/4ON9MewoVnV58OL\n        OU2ALBi2FKc5yIsfSpivKxe7A6FitJjHva3WpM7gvVOinMehp6if2UNIkbaN+plW\n        f5IwqEVxsNZpeixc4GsbY9dXEk3WtRjwGSyDLySzEESH/kpJVoxO7ijRYqU+2oSR\n        wTBNePOk1H+LRQokgQIDAQAB\n        -----END PUBLIC KEY-----"
 
 
-def make_json(path):
+def make_json(path, json_path):
     '''
     获取上报名单，并且制作json
     '''
@@ -46,7 +46,7 @@ def make_json(path):
                 if len(info) > 2:
                     template['addr_1'] = info[2]
                 all_info.append(template)
-        json.dump(all_info, open('all_stu.json', 'w'), ensure_ascii=False)
+        json.dump(all_info, open(json_path, 'w'), ensure_ascii=False)
     return all_info
 
 
@@ -93,7 +93,7 @@ def send_email(content, subject="每日一报不成功！！"):
 
 def update_json(path, all_stu):
     print("Checking updates")
-    curr_stu = [i for i in os.listdir('students') if '.txt' in i]
+    curr_stu = [i for i in os.listdir(path) if '.txt' in i]
     json_stu = [i['txt_file'] for i in all_stu]
     delete_stu = list(set(json_stu).difference(set(curr_stu)))
     print(len(delete_stu))
@@ -192,6 +192,11 @@ class Dailyreport:
             while True:
                 sess = requests.Session()
                 r = sess.get('https://selfreport.shu.edu.cn/')
+                if r.status_code != 200:
+                    print('主页429')
+                    for _ in tqdm(range(60)):
+                        time.sleep(1)
+                    continue
                 code = r.url.split('/')[-1]
                 url_param = eval(base64.b64decode(code).decode("utf-8"))
                 state = url_param['state']
@@ -215,12 +220,20 @@ class Dailyreport:
                         break
 
                     else:
-                        print("登录失败！疑似修改登录系统！")
-                        self.error = '登录失败！疑似修改登录系统！'
-                        self.report = False
-                        print('url: ', r.url, r.status_code)
-                        sess = None
-                        break
+                        if self.retry > MAX_RETRY:
+                            print("登录失败！疑似修改登录系统！")
+                            self.error = '登录失败！疑似修改登录系统！'
+                            self.report = False
+                            print('url: ', r.url, r.status_code)
+                            sess = None
+                            break
+                        else:
+                            self.retry += 1
+                            print("wierd url retrying",r.url)
+                            for _ in tqdm(range(WAIT)):
+                                time.sleep(1)
+                            continue
+
                 elif r.status_code == 429:
                     print(self.stu_dic['txt_file'], 'retrying ')
                     self.retry += 1
@@ -241,11 +254,17 @@ class Dailyreport:
 
         except Exception as e:
             print(e, '\n')
-            self.error = str(e)
-            self.report = False
-            if 'HTTPSConnectionPool' in str(e):
-                print("Please check VPN")
-            return None
+            if self.retry < MAX_RETRY:
+                for _ in tqdm(range(10)):
+                    time.sleep(1)
+                self.retry += 1
+                return self.cookie_login()
+            else:
+                self.error = str(e)
+                self.report = False
+                if 'HTTPSConnectionPool' in str(e):
+                    print("Please check VPN")
+                    return None
 
     def cookie_login(self):
         '''
@@ -268,7 +287,11 @@ class Dailyreport:
                    'Upgrade-Insecure-Requests': '1',
                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 11_0_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36', }
         sess.headers = headers
-        html = sess.get("https://selfreport.shu.edu.cn/")
+        try:
+            html = sess.get("https://selfreport.shu.edu.cn/")
+        except Exception as e:
+            print(e)
+            return self.login()
         if html.url != "https://selfreport.shu.edu.cn/":
             return self.login()
         else:
@@ -548,7 +571,7 @@ class Manager:
         self._check = True
         n = 0
         for i in self.students:
-            if n % 5 == 0 and n != 0:
+            if n % 2 == 0 and n != 0:
                 for _ in tqdm(range(WAIT)):
                     time.sleep(1)
             dc = Dailyreport(i)
@@ -559,6 +582,8 @@ class Manager:
                 break
             if not dc.cookie:
                 n += 1
+                for _ in tqdm(range(60)):
+                    time.sleep(1)
             if dc.retry > 0:
                 n = 1
         pickle.dump(self.check_result, open('check_result.pkl', 'wb'))
@@ -566,7 +591,7 @@ class Manager:
     def run(self):
         n = 0
         for i in self.students:
-            if n % 5 == 0 and n != 0:
+            if n % 2 == 0 and n != 0:
                 for _ in tqdm(range(WAIT)):
                     time.sleep(1)
             dr = Dailyreport(i).upload()
@@ -580,6 +605,8 @@ class Manager:
                 self.failed.append(dr)
             if not dr.cookie:
                 n += 1
+                for _ in tqdm(range(60)):
+                    time.sleep(1)
             if dr.retry > 0:
                 n = 1
         return self
@@ -601,27 +628,38 @@ class Manager:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--check', type=str, default='0',
-                        help='Check the login of students, default is 0, Input 1 if you want to check.`')
-    parser.add_argument('--send', type=str, default='0',
-                        help='Send Email or not, default is 0. Input 1 if you want to send Email.')
+    parser.add_argument('--check', type=str,default='0', help='Check the login of students')
+    parser.add_argument('--send', type=str,default='0', help='Send Email or not')
+    parser.add_argument('--dir', type=str,default='students', help='txt dir')
+    parser.add_argument('--json', type=str, default='all_stu.json', help='json file')
+    parser.add_argument('--noDir', type=str, default='0', help='Only provide json file')
     args = parser.parse_args()
 
-    if os.path.exists('all_stu.json'):
-        all_stu = json.load(open('all_stu.json', 'r'))
-    else:
-        all_stu = make_json("students")
-    all_stu = update_json('students', all_stu)
-    manage = Manager(all_stu)
+    if args.noDir == '0':
+        if os.path.exists(args.json):
+            all_stu = json.load(open(args.json, 'r'))
+        else:
+            all_stu = make_json(args.dir ,args.json)
+        all_stu = update_json(args.dir, all_stu)
+    elif args.noDir == '1':
+        if os.path.exists(args.json): 
+            all_stu = json.load(open(args.json, 'r'))
+        else:
+            print("no such json file!")
+            all_stu = None
+    
+    if all_stu is not None:
+        manage = Manager(all_stu)
 
-    if args.check == '1':
-        manage.check()
-    else:
-        manage.run()
-    if args.send == '1':
-        manage.send()
-
+    try:
+        if args.check == '1':
+            manage.check()
+        else:
+            manage.run()
+        if args.send == '1':
+            manage.send()
+    except Exception as e:
+        print(e)
     if len(manage.failed) != 0:
-        json.dump([i.stu_dic for i in manage.failed], open(
-            'all_stu_failed.json', 'w'), ensure_ascii=False)
-    json.dump(all_stu, open('all_stu.json', 'w'), ensure_ascii=False)
+        json.dump([i.stu_dic for i in manage.failed], open(f'{args.dir}_all_stu_failed.json', 'w'), ensure_ascii=False)
+    json.dump(all_stu, open(args.json, 'w'), ensure_ascii=False)
