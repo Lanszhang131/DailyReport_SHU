@@ -515,6 +515,9 @@ class Dailyreport:
             upload_data['p1$XiangXDZ'] = self.stu_dic['addr_2'][3]['Text']
             if self.stu_dic['addr_2'][0]['SelectedValueArray'][0] != '上海':
                 upload_data['p1$ShiFSH'] = '否'
+                upload_data.pop("p1$ShiFZX")
+                upload_data.pop("p1$TongZWDLH")
+                upload_data['p1_pnlDangSZS_Collapsed'] = False
             else:
                 upload_data['p1$ShiFSH'] = '是'
                 if self.in_school:
